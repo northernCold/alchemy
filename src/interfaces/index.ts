@@ -2,6 +2,11 @@ export interface Vedio {
   title: String,
   description: String,
   author: String,
-  avid: Number,
-  cid: Number
+  aid: Number,
+  bvid?: Number,
+  cid: Number,
+  length: String,
+  play: Number,
+  comment: Number,
+  created: Number,
 }

@@ -3,37 +3,9 @@
 import { app, protocol, BrowserWindow, ipcMain, net } from 'electron'
 import { createProtocol } from 'vue-cli-plugin-electron-builder/lib'
 import installExtension, { VUEJS3_DEVTOOLS } from 'electron-devtools-installer'
-import nodeRequest from 'request'
 import fs from 'fs';
+import { getVedioDetils, getVedioPlayUrl, downloadVedio, getVedioList } from './api/vedio';
 
-const request = (url) => {
-  return new Promise((resolve, reject) => {
-    const req = net.request(url);
-    req.setHeader("referer", "https://www.bilibili.com")
-    req.on('response', (response) => {
-      // console.log(`STATUS: ${response.statusCode}`)
-      // console.log(`HEADERS: ${JSON.stringify(response.headers)}`)
-      let result = "";
-      response.on('data', (chunk) => {
-        result += chunk
-      })
-      response.on('end', () => {
-        resolve(result);        
-      })
-    })
-    req.end()
-  })
-}
-const resolveUrlWidthQuery = (url: string, query: any) => {
-  const hadQuery = /\?/.test(url);
-  let append = Object.keys(query).reduce((prev: string, next: string) => {
-    return `${prev}&${next}=${query[next]}`;
-  }, "")
-  if (!hadQuery) {
-    append = `?${append.slice(1)}`
-  }
-  return url + append;
-}
 const isDevelopment = process.env.NODE_ENV !== 'production'
 // Scheme must be registered before the app is ready
 protocol.registerSchemesAsPrivileged([
@@ -57,72 +29,37 @@ async function createWindow() {
   ipcMain.on('play-audio', (event, args) => {
     // http://api.bilibili.com/x/player/playurl?avid=379743801&cid=457942787
     const { aid, title } = JSON.parse(args);
-    const url = resolveUrlWidthQuery(
-      "http://api.bilibili.com/x/web-interface/view",
-      { aid }
-    )
-    request(url)
+    getVedioDetils(aid)
       .then(res => {
+        const { bvid, cid } = JSON.parse(res).data;
         return {
-          bvid: JSON.parse(res).data.bvid,
-          cid: JSON.parse(res).data.cid,
+          bvid,
+          cid
         }
       })
-      .then(data =>{
-        console.log(data);
-        return request(resolveUrlWidthQuery("http://api.bilibili.com/x/player/playurl", data))
+      .then(data => {
+        console.log(data)
+        return getVedioPlayUrl(data)
       })
       .then(res => {
+        console.log(res)
         const { durl: [ { url }] } = JSON.parse(res).data;
-        return url
-      })
-      .then(url => {
-        const req = net.request(url);
-        req.setHeader("referer", "https://www.bilibili.com")
-        req.setHeader(
-          'user-agent', "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/97.0.4692.71 Safari/537.36",
-        )
-
-        req.on('response', (response) => {
-          let result = [];
-          response.on('data', (chunk) => {
-            result.push(chunk)
-          })
-          response.on('end', () => {
-            fs.writeFileSync(`./${title}.flv`, Buffer.concat(result));
-          })
+        downloadVedio(url).then((content) => {
+          fs.writeFileSync(`./${title}.flv`, content);
         })
-        req.end()
       })
   })
   ipcMain.on('fetch-vedio-list', (event, args) => {
     const { pageSize: ps, page: pn } = JSON.parse(args);
-    const url = resolveUrlWidthQuery(
-      "https://api.bilibili.com/x/space/arc/search", 
-      {
-        mid: "97077404",
-        ps,
-        pn,
-        tid: "0",
-        keyword: "",
-        order: "pubdate",
-        jsonp: "jsonp"
-      }
-    )
-    const request = net.request(url);
-    request.on('response', (response) => {
-      // console.log(`STATUS: ${response.statusCode}`)
-      // console.log(`HEADERS: ${JSON.stringify(response.headers)}`)
-      let result = "";
-      response.on('data', (chunk) => {
-        result += chunk
-      })
-      response.on('end', () => {
-        console.log('No more data in response.')
-        win.webContents.send('receiveMessage', result);
-      })
+    getVedioList({
+      mid: "97077404",
+      ps,
+      pn,
+      keyword: "",
+      order: "pubdate",
+    }).then(result => {
+      win.webContents.send('receiveMessage', result);
     })
-    request.end()
   })
   if (process.env.WEBPACK_DEV_SERVER_URL) {
     // Load the url of the dev server if in development mode

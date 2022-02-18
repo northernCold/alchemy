@@ -47,7 +47,7 @@ const columns = ref([
     key: "title",
   },
   {
-    title: "长度",
+    title: "时长",
     key: "length"
   },
   {
